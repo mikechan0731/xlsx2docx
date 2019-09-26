@@ -5,10 +5,11 @@
 
 # OS import
 import os
-import random
-from datetime import datetime, date
+#from datetime import datetime, date
 import time
-import re
+
+# Copy module
+import shutil
 
 # Pandas import
 import pandas as pd
@@ -16,19 +17,17 @@ import pandas as pd
 # Office-docx lib import
 import docx
 from docx.shared import Cm, Pt  #add unit for word
-from docx.enum.text import WD_ALIGN_PARAGRAPH # deal with alignment
+#from docx.enum.text import WD_ALIGN_PARAGRAPH # deal with alignment
 from docx.enum.table import WD_TABLE_ALIGNMENT
-#from docx.shared import RGBColor
 
 # ===== TODO ===== #
 # 1. can't open large row excel
 # 2. deal with folder's different name
 
 # ===== Global Variables ===== #
-spacing_folder = ""
-input_folder = "input/"
-output_folder = "output/"
-
+input_folder = "input"
+output_folder = "output"
+row_switch = False
 # ===== Global Function ===== #
 def timeIt(func):
     def wrapper(*args, **kw):
@@ -38,36 +37,62 @@ def timeIt(func):
         print("** timeIt Report: {} took {:.2f}s".format(func.__name__, t2-t1))
     return wrapper
 
+def ask_test_or_release():
+    while 1:
+        answer = input("(1)Test Mode or (2)Hard Mode:  ")
+        try:
+            answer = int(answer)
+            if answer == 1:
+                return False
+            elif answer == 2:
+                second_answer = input("WARNNING: Hard Mode will take lots of time, Sure? Y/N:  ")
+                if second_answer == "Y" or second_answer == "y":
+                    print("Have a good time :)")
+                    return True
+                else:
+                    print("Input Error, Try again")
+                    continue
+        except:
+            print("Input Error, Try again")
+            continue
+
 # ====== Functions ===== #
 def output_folder_dir_list(input_folder_path):
     dir_list = os.listdir(input_folder_path)
     return dir_list
 
 
-def xlsx2df(xlsx_path):
-    folder_number = xlsx_path.split("/")[-1]
-    raw_df = pd.read_excel(xlsx_path + "/"+ u"台電跑報表_缺陷匯總表.xlsx")
+def xlsx2df(input_folder, tar_folder):
+    tar_folder_list = os.listdir(input_folder+"/"+tar_folder)
+    
+    tar_xlsx = [item for item in tar_folder_list if item.endswith(u"_缺陷匯總表.xlsx")]
+
+
+    raw_df = pd.read_excel(input_folder + "/" +tar_folder  + "/" + tar_xlsx[0])
     df = raw_df.loc[1::]
     df.columns = [u"序號",u"區間",u"距小號塔距離(m)",u"地物危險點座標", 
                   u"缺陷類型",u"缺陷級別",
                   u"實測平距",u"實測垂距",u"實測直線距離",
                   u"規範平距",u"規範垂距",u"規範直線距離",u"圖示"]
     
-    df[u"區間"] = folder_number
+    df[u"區間"] = tar_folder
     #print(df.head(2))
-    print(u"-> {}台電跑報表_缺陷匯總表.xlsx read.".format(xlsx_path) )
+    print(u"-> {} read.".format(tar_xlsx[0]) )
     return df
 
+
 @timeIt
-def df2docx(df, output_folder, spacing_folder):
-    if not os.path.exists(output_folder+spacing_folder):
-        os.makedirs(output_folder+spacing_folder)
-    
-    docx_name = spacing_folder + u"缺陷匯總表.docx"
+def df2docx(df, output_folder, tar_folder, row_switch:bool):
+   
+    docx_name = tar_folder + u"缺陷匯總表.docx"
 
     # get basic info from df
-    #row_length = df.shape[0]
-    row_length = df.shape[0]
+    if row_switch:
+        wtf = df.shape[0]
+    else:
+        wtf = 100    
+
+    row_length = wtf
     col_length = df.shape[1]
 
     print("-> Total Row: {}".format(row_length))
@@ -139,40 +164,39 @@ def df2docx(df, output_folder, spacing_folder):
 
         #Add text to row_cells
 
-
-
-    '''
-    # fill the cell with df data
-    for row_index in range(row_length):
-        print("-> Row Processing: {} / {}". format(row_index+1, row_length))
-        for col_index in range(col_length):
-            insert_value = df.iloc[row_index, col_index]
-            if col_index == 0:
-                insert_value = str(int(insert_value))
-            if col_index >= 6 and col_index <= 11:
-                insert_value = "{:.3f}".format(insert_value)
-            if str(insert_value) == "nan":
-                insert_value = ""
-
-            table_1.cell(row_index, col_index).text = str(insert_value)
-    '''
-
-    doc.save(output_folder + spacing_folder + "/" + docx_name)
+    doc.save(output_folder + "/" + tar_folder + "/" + docx_name)
     print("---> docx saved.")
 
 # ====== main() ===== #
 def main():
     dir_list = os.listdir(input_folder)
     for tar_folder in dir_list:
-        print("*** {} is processing...".format( input_folder + tar_folder + "/"))
-        single_df = xlsx2df(input_folder + "/" + tar_folder)
-        df2docx(single_df, output_folder, tar_folder)
+        
+        # create output/sub-folder
+        if not os.path.exists(output_folder + "/" + tar_folder):
+            os.makedirs(output_folder + "/" + tar_folder)
+        
+        # rename file name
+        print("------> {} is renaming...".format( input_folder + "/" + tar_folder + "/"))
+        tar_dir_list = os.listdir(input_folder + "/" + tar_folder)
+        for fn in tar_dir_list:
+            old_name = input_folder + "/" + tar_folder + "/" + fn
+            new_name = output_folder + "/" + tar_folder + "/" + tar_folder + fn.split("_")[-1]
+            shutil.copy(old_name, new_name)
+        print("------> {} renamed.".format( input_folder + "/" +tar_folder + "/"))
 
+
+        # xlsx 2 docx
+        print("------> {} is transfering to docx...".format( input_folder + "/" +tar_folder + "/"))
+        single_df = xlsx2df(input_folder, tar_folder)
+        df2docx(single_df, output_folder, tar_folder, row_switch=row_switch)
+        print("------> {} transfered to docx.".format( input_folder + "/" +tar_folder + "/"))
 
 
 if __name__=="__main__":
-    print("** xlsx2docx convertion start. **")
+    print("***** START *****")
 
+    row_switch = ask_test_or_release()
     main()
 
-    print("** xlsx2docx convertion Done. **")
+    print("***** DONE *****")
